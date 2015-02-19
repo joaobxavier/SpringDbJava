@@ -137,6 +137,22 @@ public class SpringDBQuery {
 		
 	}
 
+	/**
+	 * Same as getSequencesOfGene but can request for a given genome
+	 * 
+	 * @param gene
+	 * @param genome_id
+	 * @return
+	 * @throws SQLException
+	 */
+	public String getSequencesOfGene(String gene, int genome_id) throws  SQLException {
+		String[][] r = this
+				.returnQuery("SELECT seq from"
+						+ " orf where orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
+						+ " and genome_id = " + genome_id);
+		return r[0][0];
+	}
+
 	@Override
 	public String toString() {
 		// TODO Auto-generated method stub
@@ -160,10 +176,10 @@ public class SpringDBQuery {
 	 */
 	public static void main(String args[]) {
 		try {
-			SpringDBQuery sprindDbQuery = new SpringDBQuery(args[0]);
+			SpringDBQuery dB = new SpringDBQuery(args[0]);
 			// sprindDbQuery.useLocalDb();
 			String[][] result;
-			result = sprindDbQuery
+			result = dB
 					.returnQuery("SELECT genome_id, strain_name from"
 							+ " genome where genome_id in"
 							+ " (SELECT DISTINCT genome_id FROM orf WHERE orth_orf_id IS NOT NULL)"
@@ -175,15 +191,17 @@ public class SpringDBQuery {
 				}
 				System.out.println();
 			}
-			float[] r = sprindDbQuery.getPhenotypeColumn("biofilm");
+			float[] r = dB.getPhenotypeColumn("biofilm");
 			for (int i = 0; i < r.length; i++) {
 				System.out.println(r[i]);
 			}
-			System.out.println(sprindDbQuery.getOrth_Orf_Id_OfGene("wspF"));
-			String[] seqs = sprindDbQuery.getSequencesOfGene("wspR");
+			System.out.println(dB.getOrth_Orf_Id_OfGene("wspF"));
+			String[] seqs = dB.getSequencesOfGene("wspR");
 			for (int i = 0; i < seqs.length; i++) {
 				System.out.println(seqs[i]);
 			}
+			System.out.println("\n\nTest getting a single gene from PA14");
+			System.out.println(dB.getSequencesOfGene("wspF", 11));
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
