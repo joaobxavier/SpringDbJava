@@ -1,10 +1,11 @@
-function [mutationMatrix, mutationList] = getMutationMatrix(db, geneList, referenceStrain)
+function [mutationMatrix, mutationList] = getMutationMatrix(db, geneList, referenceStrain, useMuscle)
 
 % parse inputs
 % if no genome_id is provided as reference strain then use the consensus
 % seuqence
 if nargin == 2
     referenceStrain = 'consensus';
+    useMuscle = false;
 end
 
 % if a single gene is provided rather than a  list of genes then
@@ -19,7 +20,7 @@ end
 mutationMatrix = [];
 mutationList = {};
 for i = 1:length(geneList)
-    [mm, ml] = getMutationMatrixAux(db, geneList{i}, referenceStrain);
+    [mm, ml] = getMutationMatrixAux(db, geneList{i}, referenceStrain, useMuscle);
     mutationMatrix = [mutationMatrix, mm];
     mutationList = [mutationList, ml];
 end
@@ -37,7 +38,7 @@ mutationList = mutationListClustered;
 
 
 
-function [mutationMatrix, mutationList] = getMutationMatrixAux(db, gene, referenceStrain)
+function [mutationMatrix, mutationList] = getMutationMatrixAux(db, gene, referenceStrain, useMuscle)
 
 seqsQuery = cell(db.getSequencesOfGene(gene));
 genome_id = db.getPhenotypeColumn('genome_id');
@@ -48,8 +49,19 @@ for i = 1:length(seqsQuery)
     seqs(i).Header = num2str(genome_id(i));
 end
 
-SeqsMultiAligned = multialign(seqs);
 
+if useMuscle
+    fastawrite('~/tmp/test.fasta', seqs);
+    [status,cmdout] = system('muscle -in ~/tmp/test.fasta -msf -out ~/tmp/test.msf');
+    %[status,cmdout] = system('muscle -in ~/tmp/test.fasta -msf -out ~/tmp/test.msf -maxiters 1 -diags1 -sv -distance1 kbit20_3');
+    SeqsMultiAligned = multialignread('~/tmp/test.msf');
+    
+    [~, iSort] = sort(cellfun(@str2num,{SeqsMultiAligned.Header}));
+    SeqsMultiAligned = SeqsMultiAligned(iSort);
+    system('rm ~/tmp/test.*');
+else
+    SeqsMultiAligned = multialign(seqs);
+end
 % find the mutations
 
 
