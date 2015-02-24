@@ -8,6 +8,10 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 
 public class SpringDBQuery {
 	private String url;
@@ -20,7 +24,7 @@ public class SpringDBQuery {
 	 */
 	public SpringDBQuery(String dbConfigFile) throws SQLException {
 		// use this to use a local version of SpringDb
-		//this.useLocalDb();
+		// this.useLocalDb();
 		// use this to use the cloud version
 		this.connectToDb(dbConfigFile);
 	}
@@ -37,8 +41,7 @@ public class SpringDBQuery {
 		System.out.println(this.toString());
 	}
 
-	
-	private void buildUrlFromConfigFile(String dbConfigFile)  {
+	private void buildUrlFromConfigFile(String dbConfigFile) {
 		try {
 			FileReader fr = new FileReader(dbConfigFile);
 			BufferedReader textReader = new BufferedReader(fr);
@@ -58,14 +61,16 @@ public class SpringDBQuery {
 					+ "user=" + user + "&password=" + password + "&ssl=true"
 					+ "&sslfactory=org.postgresql.ssl.NonValidatingFactory";
 			System.out.println(url);
-			
+
 		} catch (Exception e) {
-			System.out.println("must provide config file with the follwoing info:");
-			System.out.println("host='#####' dbname='#####' user='#####' password='#####'");
+			System.out
+					.println("must provide config file with the follwoing info:");
+			System.out
+					.println("host='#####' dbname='#####' user='#####' password='#####'");
 			e.printStackTrace();
 		}
 	}
-	
+
 	/**
 	 * Runs an SQL query, returns the result as a matrix of strings
 	 * 
@@ -121,20 +126,21 @@ public class SpringDBQuery {
 				+ geneName + "%'");
 		return r[0][0];
 	}
-	
-	public String[] getSequencesOfGene(String gene) throws  SQLException {
+
+	public String[] getSequencesOfGene(String gene) throws SQLException {
 		String[][] r = this
 				.returnQuery("SELECT seq from"
 						+ " orf where genome_id in"
 						+ " (SELECT DISTINCT genome_id FROM orf WHERE orth_orf_id IS NOT NULL)"
-						+ " and orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
+						+ " and orth_orf_id="
+						+ getOrth_Orf_Id_OfGene(gene)
 						+ " and genome_id in (SELECT genome_id FROM phenotype) ORDER BY genome_id");
-		String [] r2 = new String[r.length];
+		String[] r2 = new String[r.length];
 		for (int i = 0; i < r2.length; i++) {
 			r2[i] = r[i][0];
 		}
 		return r2;
-		
+
 	}
 
 	/**
@@ -145,12 +151,73 @@ public class SpringDBQuery {
 	 * @return
 	 * @throws SQLException
 	 */
-	public String getSequencesOfGene(String gene, int genome_id) throws  SQLException {
-		String[][] r = this
-				.returnQuery("SELECT seq from"
-						+ " orf where orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
-						+ " and genome_id = " + genome_id);
+	public String getSequencesOfGene(String gene, int genome_id)
+			throws SQLException {
+		String[][] r = this.returnQuery("SELECT seq from"
+				+ " orf where orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
+				+ " and genome_id = " + genome_id);
 		return r[0][0];
+	}
+
+	public String[][] getSequencesOfGenes(String[] genes) throws SQLException {
+		// construct sql query
+		String q = "SELECT B.gene_name, B.orth_orf_id, A.genome_id, A.seq from"
+				+ " orf A RIGHT JOIN (SELECT distinct orth_orf_id, gene_name from orf where ";
+		for (int i = 0; i < genes.length; i++) {
+			q += "gene_name like '%" + genes[i] + "%'";
+			if (i < (genes.length - 1)) {
+				q += " or ";
+			}	
+		}
+		q += ") B on A.orth_orf_id = B.orth_orf_id and genome_id in (SELECT genome_id FROM phenotype) ORDER BY genome_id";
+		//
+		String[][] r = this.returnQuery(q);
+		// get the orth_orf_ids for the genes (in string format)
+		String orth_orf_ids[] = new String[genes.length];
+		for (int i = 0; i < genes.length; i++) {
+			for (int j = 0; j < r.length; j++) {
+				if (r[j][0].contains(genes[i])){
+					orth_orf_ids[i] = r[j][1];
+					break;
+				}		
+			}
+		}
+		// get the genomeIds
+		int[] genome_ids_in_query = new int[r.length];
+		HashSet<String> tmp1 = new HashSet<String>();
+		for (int i = 0; i < r.length; i++) {
+			tmp1.add(r[i][2]);
+			genome_ids_in_query[i] = Integer.parseInt(r[i][2]);
+		}
+		String[] tmp2 = new String[tmp1.size()];
+		tmp2 = tmp1.toArray(tmp2);
+		int[] genome_ids = new int[tmp2.length];
+		for (int i = 0; i < tmp2.length; i++) {
+			genome_ids[i] = Integer.parseInt(tmp2[i]);
+		}
+		Arrays.sort(genome_ids);
+		// prepare the output: a matrix of String objects where each entry is a sequence
+		// the matrix is ordered so that rows represent genomes (sorted in ascending order of genoem_id)
+		// and columns are ordered following the input list
+		String[][] sequences = new String[genome_ids.length][orth_orf_ids.length];
+		for (int i = 0; i < r.length; i++) {
+			int row = 0;
+			for (int j = 0; j < genome_ids.length; j++) {
+				if (genome_ids_in_query[i] == genome_ids[j]) {
+					row = j;
+					break;
+				}
+			}
+			int column = 0;
+			for (int j = 0; j < orth_orf_ids.length; j++) {
+				if (r[i][1].equals(orth_orf_ids[j])) {
+					column = j;
+					break;
+				}
+			}
+			sequences[row][column] = r[i][3];	
+		}
+		return sequences;
 	}
 
 	@Override
@@ -202,6 +269,19 @@ public class SpringDBQuery {
 			}
 			System.out.println("\n\nTest getting a single gene from PA14");
 			System.out.println(dB.getSequencesOfGene("wspF", 11));
+
+			//
+			String[] genes = new String[2];
+			genes[0] = "wspF";
+			genes[1] = "wspE";
+			String[][] seqMatrix = dB.getSequencesOfGenes(genes);
+			for (int i = 0; i < seqMatrix.length; i++) {
+				for (int j = 0; j < seqMatrix[i].length; j++) {
+					System.out.println(seqMatrix[i][j]);					
+				}
+				System.out.println("\n\n");
+			}
+
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

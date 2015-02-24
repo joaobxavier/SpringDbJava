@@ -8,6 +8,35 @@ if nargin == 2
     useMuscle = false;
 end
 
+genome_id = db.getPhenotypeColumn('genome_id');
+
+
+% % fetch sequences from database
+% for i = 1:length(geneList)
+%     seqsQuery = cell(db.getSequencesOfGene(geneList(i)));
+%     for j = 1:length(seqsQuery)
+%         aaseq = nt2aa(seqsQuery{j});
+%         seqs(j).Sequence = aaseq(1:end-1); % must translate
+%         seqs(j).Header = num2str(genome_id(j));
+%     end
+%     geneListSeqs(i).seqs = seqs;
+% end
+
+% get all sequences in a single query
+seqsQuery = cell(db.getSequencesOfGenes(geneList));
+for i = 1:size(seqsQuery, 2) % iterate over gene list
+    for j = 1:size(seqsQuery, 1) % iterate over geenoe list
+        aaseq = nt2aa(seqsQuery{j, i});
+        seqs(j).Sequence = aaseq(1:end-1); % must translate
+        seqs(j).Header = num2str(genome_id(j));
+    end
+    geneListSeqs(i).seqs = seqs;
+end
+    
+
+
+
+
 % if a single gene is provided rather than a  list of genes then
 % put gene in a list with a single element, becuase the rest of the
 % algorithm requires a list
@@ -19,11 +48,20 @@ end
 % get mutations for each gene
 mutationMatrix = [];
 mutationList = {};
+
+
+mutationData = [];
 for i = 1:length(geneList)
-    [mm, ml] = getMutationMatrixAux(db, geneList{i}, referenceStrain, useMuscle);
-    mutationMatrix = [mutationMatrix, mm];
-    mutationList = [mutationList, ml];
+    [mm, ml] = getMutationMatrixAux(geneListSeqs(i).seqs, geneList{i}, referenceStrain, useMuscle, genome_id);
+    mutationData(i).mutationMatrix = mm;
+    mutationData(i).mutationList = ml;
 end
+
+for i = 1:length(geneList)
+    mutationMatrix = [mutationMatrix, mutationData(i).mutationMatrix];
+    mutationList = [mutationList, mutationData(i).mutationList];
+end
+
 
 % consolidate co-occuring mutations
 clusters = clusterdata(mutationMatrix', 'cutoff', eps, 'distance', 'hamming');
@@ -38,21 +76,11 @@ mutationList = mutationListClustered;
 
 
 
-function [mutationMatrix, mutationList] = getMutationMatrixAux(db, gene, referenceStrain, useMuscle)
-
-seqsQuery = cell(db.getSequencesOfGene(gene));
-genome_id = db.getPhenotypeColumn('genome_id');
-
-for i = 1:length(seqsQuery)
-    aaseq = nt2aa(seqsQuery{i});
-    seqs(i).Sequence = aaseq(1:end-1); % must translate
-    seqs(i).Header = num2str(genome_id(i));
-end
-
+function [mutationMatrix, mutationList] = getMutationMatrixAux(seqs, gene, referenceStrain, useMuscle, genome_id)
 
 if useMuscle
     fastawrite('~/tmp/test.fasta', seqs);
-    [status,cmdout] = system('muscle -in ~/tmp/test.fasta -msf -out ~/tmp/test.msf');
+    [status,cmdout] = system('muscle -in ~/tmp/test.fasta -msf -out ~/tmp/test.msf -maxiters 1 -diags1 -sv -distance1 kbit20_3');
     %[status,cmdout] = system('muscle -in ~/tmp/test.fasta -msf -out ~/tmp/test.msf -maxiters 1 -diags1 -sv -distance1 kbit20_3');
     SeqsMultiAligned = multialignread('~/tmp/test.msf');
     
@@ -83,8 +111,7 @@ if strcmp(referenceStrain, 'consensus')
     reference = consensus;
 else
     % use the reference strain provided as input
-    g = db.getPhenotypeColumn('genome_id');
-    reference = SeqsMultiAligned(g == referenceStrain).Sequence;
+    reference = SeqsMultiAligned(genome_id == referenceStrain).Sequence;
 end
 
 % make list of mutations
