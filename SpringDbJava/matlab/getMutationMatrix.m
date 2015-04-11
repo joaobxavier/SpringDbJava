@@ -22,20 +22,26 @@ genome_id = db.getPhenotypeColumn('genome_id');
 %     geneListSeqs(i).seqs = seqs;
 % end
 
-% get all sequences in a single query
-seqsQuery = cell(db.getSequencesOfGenes(geneList));
+% check if list is numerid (id's) or not (gene names)
+geneNames = [];
+if isnumeric(geneList)
+    seqsQuery = cell(db.getSequencesOfGenesFromId(geneList));
+    for i = 1:length(geneList)
+        geneNames{i} = num2str(geneList(i));
+    end
+else
+    seqsQuery = cell(db.getSequencesOfGenes(geneList));
+    geneNames = geneList;
+end
+% get all sequences in a single query (great speed improvemnt)
 for i = 1:size(seqsQuery, 2) % iterate over gene list
-    for j = 1:size(seqsQuery, 1) % iterate over geenoe list
+    for j = 1:size(seqsQuery, 1) % iterate over genome list
         aaseq = nt2aa(seqsQuery{j, i});
         seqs(j).Sequence = aaseq(1:end-1); % must translate
         seqs(j).Header = num2str(genome_id(j));
     end
     geneListSeqs(i).seqs = seqs;
 end
-    
-
-
-
 
 % if a single gene is provided rather than a  list of genes then
 % put gene in a list with a single element, becuase the rest of the
@@ -52,7 +58,12 @@ mutationList = {};
 
 mutationData = [];
 for i = 1:length(geneList)
-    [mm, ml] = getMutationMatrixAux(geneListSeqs(i).seqs, geneList{i}, referenceStrain, useMuscle, genome_id);
+    try
+        [mm, ml] = getMutationMatrixAux(geneListSeqs(i).seqs, geneNames{i},...
+            referenceStrain, useMuscle, genome_id);
+    catch
+        error('getMutationMatrixAux failed for %s', geneNames{i});
+    end
     mutationData(i).mutationMatrix = mm;
     mutationData(i).mutationList = ml;
 end
@@ -127,6 +138,7 @@ for i = 1:length(SeqsMultiAligned)
         end
     end
 end
+
 % make the mutation matrix
 mutationMatrix = zeros(length(SeqsMultiAligned), length(mutationList));
 for i = 1:length(SeqsMultiAligned)

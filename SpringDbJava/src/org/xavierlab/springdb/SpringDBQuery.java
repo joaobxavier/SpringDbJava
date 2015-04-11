@@ -121,6 +121,20 @@ public class SpringDBQuery {
 		return convertColumnToArrayOfNumbers(r, 0);
 	}
 
+	/**
+	 * @return a list of genome names and their id numbers
+	 * @throws SQLException
+	 */
+	public String[][] getGenomeName() throws SQLException {
+		String[][] r = this
+				.returnQuery("SELECT strain_name, genome_id from"
+						+ " genome where genome_id in"
+						+ " (SELECT DISTINCT genome_id FROM orf WHERE orth_orf_id IS NOT NULL)"
+						+ " and genome_id in (SELECT genome_id FROM phenotype) ORDER BY genome_id");
+		return r;
+	}
+
+	
 	public String getOrth_Orf_Id_OfGene(String geneName) throws SQLException {
 		String[][] r = returnQuery("select distinct(orth_orf_id) from orf where gene_name like '%"
 				+ geneName + "%'");
@@ -153,10 +167,52 @@ public class SpringDBQuery {
 	 */
 	public String getSequencesOfGene(String gene, int genome_id)
 			throws SQLException {
+//		String[][] r = this.returnQuery("SELECT seq from"
+//				+ " orf where orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
+//				+ " and genome_id = " + genome_id);
+		return getSequencesOfGene(getOrth_Orf_Id_OfGene(gene), genome_id);
+	}
+
+	
+	public String getSequencesOfGene(int geneId, int genome_id)
+			throws SQLException {
 		String[][] r = this.returnQuery("SELECT seq from"
-				+ " orf where orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
+				+ " orf where orth_orf_id=" + geneId
 				+ " and genome_id = " + genome_id);
 		return r[0][0];
+	}
+
+	/**
+	 * 
+	 * 
+	 * @param genes
+	 *            list of genes
+	 * @return a list of id numbers for the genes
+	 */
+	public int[] getIdOfGenes(String[] genes) throws SQLException {
+		// construct sql query
+		String q = "SELECT DISTINCT B.gene_name, B.orth_orf_id from"
+				+ " orf A RIGHT JOIN (SELECT distinct orth_orf_id, gene_name from orf where ";
+		for (int i = 0; i < genes.length; i++) {
+			q += "gene_name like '%" + genes[i] + "%'";
+			if (i < (genes.length - 1)) {
+				q += " or ";
+			}
+		}
+		q += ") B on A.orth_orf_id = B.orth_orf_id and genome_id in (SELECT genome_id FROM phenotype)";
+		//
+		String[][] r = this.returnQuery(q);
+		int[] orth_orf_ids = new int[genes.length];
+		for (int i = 0; i < genes.length; i++) {
+			for (int j = 0; j < r.length; j++) {
+				if (r[j][0].equals(genes[i])) {
+					orth_orf_ids[i] = Integer.parseInt(r[j][1]);
+					break;
+				}
+			}
+			System.out.println(genes[i] + ", " + orth_orf_ids[i]);
+		}
+		return orth_orf_ids;
 	}
 
 	public String[][] getSequencesOfGenes(String[] genes) throws SQLException {
@@ -167,7 +223,7 @@ public class SpringDBQuery {
 			q += "gene_name like '%" + genes[i] + "%'";
 			if (i < (genes.length - 1)) {
 				q += " or ";
-			}	
+			}
 		}
 		q += ") B on A.orth_orf_id = B.orth_orf_id and genome_id in (SELECT genome_id FROM phenotype) ORDER BY genome_id";
 		//
@@ -176,10 +232,10 @@ public class SpringDBQuery {
 		String orth_orf_ids[] = new String[genes.length];
 		for (int i = 0; i < genes.length; i++) {
 			for (int j = 0; j < r.length; j++) {
-				if (r[j][0].contains(genes[i])){
+				if (r[j][0].contains(genes[i])) {
 					orth_orf_ids[i] = r[j][1];
 					break;
-				}		
+				}
 			}
 		}
 		// get the genomeIds
@@ -196,8 +252,10 @@ public class SpringDBQuery {
 			genome_ids[i] = Integer.parseInt(tmp2[i]);
 		}
 		Arrays.sort(genome_ids);
-		// prepare the output: a matrix of String objects where each entry is a sequence
-		// the matrix is ordered so that rows represent genomes (sorted in ascending order of genoem_id)
+		// prepare the output: a matrix of String objects where each entry is a
+		// sequence
+		// the matrix is ordered so that rows represent genomes (sorted in
+		// ascending order of genome_id)
 		// and columns are ordered following the input list
 		String[][] sequences = new String[genome_ids.length][orth_orf_ids.length];
 		for (int i = 0; i < r.length; i++) {
@@ -215,16 +273,71 @@ public class SpringDBQuery {
 					break;
 				}
 			}
-			sequences[row][column] = r[i][3];	
+			sequences[row][column] = r[i][3];
 		}
 		return sequences;
 	}
 
+	public String[][] getSequencesOfGenesFromId(int[] genes) throws SQLException {
+		// construct sql query
+		String q = "SELECT B.gene_name, B.orth_orf_id, A.genome_id, A.seq from"
+				+ " orf A RIGHT JOIN (SELECT distinct orth_orf_id, gene_name from orf where orth_orf_id in (";
+		for (int i = 0; i < genes.length; i++) {
+			q += ("" + genes[i]);
+			if (i < (genes.length - 1)) {
+				q += ", ";
+			}
+		}
+		q += ")) B on A.orth_orf_id = B.orth_orf_id and genome_id in (SELECT genome_id FROM phenotype) ORDER BY genome_id";
+		//
+		String[][] r = this.returnQuery(q);
+		// get the genomeIds
+		int[] genome_ids_in_query = new int[r.length];
+		HashSet<String> tmp1 = new HashSet<String>();
+		for (int i = 0; i < r.length; i++) {
+			tmp1.add(r[i][2]);
+			genome_ids_in_query[i] = Integer.parseInt(r[i][2]);
+		}
+		String[] tmp2 = new String[tmp1.size()];
+		tmp2 = tmp1.toArray(tmp2);
+		int[] genome_ids = new int[tmp2.length];
+		for (int i = 0; i < tmp2.length; i++) {
+			genome_ids[i] = Integer.parseInt(tmp2[i]);
+		}
+		Arrays.sort(genome_ids);
+		// prepare the output: a matrix of String objects where each entry is a
+		// sequence
+		// the matrix is ordered so that rows represent genomes (sorted in
+		// ascending order of genome_id)
+		// and columns are ordered following the input list
+		String[][] sequences = new String[genome_ids.length][genes.length];
+		for (int i = 0; i < r.length; i++) {
+			int row = 0;
+			for (int j = 0; j < genome_ids.length; j++) {
+				if (genome_ids_in_query[i] == genome_ids[j]) {
+					row = j;
+					break;
+				}
+			}
+			int column = 0;
+			for (int j = 0; j < genes.length; j++) {
+				if (Integer.parseInt(r[i][1]) == genes[j]) {
+					column = j;
+					break;
+				}
+			}
+			sequences[row][column] = r[i][3];
+		}
+		return sequences;
+	}
+
+	
 	@Override
 	public String toString() {
 		// TODO Auto-generated method stub
 		return "Connected to " + url;
 	}
+
 
 	public static float[] convertColumnToArrayOfNumbers(String[][] s,
 			int columnNumber) {
@@ -274,13 +387,20 @@ public class SpringDBQuery {
 			String[] genes = new String[2];
 			genes[0] = "wspF";
 			genes[1] = "wspE";
-			String[][] seqMatrix = dB.getSequencesOfGenes(genes);
+
+			int[] genes2 = new int[2];
+			genes2[0] = 3649;
+			genes2[1] = 3650;
+			String[][] seqMatrix = dB.getSequencesOfGenesFromId(genes2);
 			for (int i = 0; i < seqMatrix.length; i++) {
 				for (int j = 0; j < seqMatrix[i].length; j++) {
-					System.out.println(seqMatrix[i][j]);					
+					System.out.println(seqMatrix[i][j]);
 				}
 				System.out.println("\n\n");
 			}
+
+			// Testing function getIdOfGenes(String[] genes)
+			System.out.println(dB.getIdOfGenes(genes));
 
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
