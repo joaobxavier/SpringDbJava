@@ -80,6 +80,11 @@ public class SpringDBQuery {
 	 */
 	public String[][] returnQuery(String query) throws SQLException {
 
+		if (connection.isClosed()) { 
+			System.out.println("Connection timed out");
+			connection = DriverManager.getConnection(url);
+			System.out.println(this.toString());
+			}
 		Statement st = connection.createStatement(
 				ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE);
 
