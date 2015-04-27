@@ -23,7 +23,6 @@ public class SpringDBQuery {
 	 * @throws SQLException
 	 */
 	public SpringDBQuery(String dbConfigFile) throws SQLException {
-		// use this to use a local version of SpringDb
 		// this.useLocalDb();
 		// use this to use the cloud version
 		this.connectToDb(dbConfigFile);
@@ -35,8 +34,14 @@ public class SpringDBQuery {
 	 * @throws SQLException
 	 */
 	private void connectToDb(String dbConfigFile) throws SQLException {
+		// use this to use a local version of SpringDb
+		if (dbConfigFile.equals("localhost")) {
+			url = "jdbc:postgresql://localhost/paerug";
+			System.out.println(url);
+		} else {
+			buildUrlFromConfigFile(dbConfigFile);
+		}
 		// connect to the database
-		buildUrlFromConfigFile(dbConfigFile);
 		connection = DriverManager.getConnection(url);
 		System.out.println(this.toString());
 	}
@@ -71,6 +76,18 @@ public class SpringDBQuery {
 		}
 	}
 
+	public boolean executeSql(String sqlCommand)  throws SQLException {
+		if (connection.isClosed()) {
+			System.out.println("Connection timed out");
+			connection = DriverManager.getConnection(url);
+			System.out.println(this.toString());
+		}
+		Statement st = connection.createStatement(
+				ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE);
+		return st.execute(sqlCommand);
+	}
+	
+	
 	/**
 	 * Runs an SQL query, returns the result as a matrix of strings
 	 * 
@@ -80,11 +97,11 @@ public class SpringDBQuery {
 	 */
 	public String[][] returnQuery(String query) throws SQLException {
 
-		if (connection.isClosed()) { 
+		if (connection.isClosed()) {
 			System.out.println("Connection timed out");
 			connection = DriverManager.getConnection(url);
 			System.out.println(this.toString());
-			}
+		}
 		Statement st = connection.createStatement(
 				ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE);
 
@@ -139,7 +156,6 @@ public class SpringDBQuery {
 		return r;
 	}
 
-	
 	public String getOrth_Orf_Id_OfGene(String geneName) throws SQLException {
 		String[][] r = returnQuery("select distinct(orth_orf_id) from orf where gene_name like '%"
 				+ geneName + "%'");
@@ -172,18 +188,17 @@ public class SpringDBQuery {
 	 */
 	public String getSequencesOfGene(String gene, int genome_id)
 			throws SQLException {
-//		String[][] r = this.returnQuery("SELECT seq from"
-//				+ " orf where orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
-//				+ " and genome_id = " + genome_id);
+		// String[][] r = this.returnQuery("SELECT seq from"
+		// + " orf where orth_orf_id=" + getOrth_Orf_Id_OfGene(gene)
+		// + " and genome_id = " + genome_id);
 		return getSequencesOfGene(getOrth_Orf_Id_OfGene(gene), genome_id);
 	}
 
-	
 	public String getSequencesOfGene(int geneId, int genome_id)
 			throws SQLException {
 		String[][] r = this.returnQuery("SELECT seq from"
-				+ " orf where orth_orf_id=" + geneId
-				+ " and genome_id = " + genome_id);
+				+ " orf where orth_orf_id=" + geneId + " and genome_id = "
+				+ genome_id);
 		return r[0][0];
 	}
 
@@ -283,7 +298,8 @@ public class SpringDBQuery {
 		return sequences;
 	}
 
-	public String[][] getSequencesOfGenesFromId(int[] genes) throws SQLException {
+	public String[][] getSequencesOfGenesFromId(int[] genes)
+			throws SQLException {
 		// construct sql query
 		String q = "SELECT B.gene_name, B.orth_orf_id, A.genome_id, A.seq from"
 				+ " orf A RIGHT JOIN (SELECT distinct orth_orf_id, gene_name from orf where orth_orf_id in (";
@@ -336,13 +352,11 @@ public class SpringDBQuery {
 		return sequences;
 	}
 
-	
 	@Override
 	public String toString() {
 		// TODO Auto-generated method stub
 		return "Connected to " + url;
 	}
-
 
 	public static float[] convertColumnToArrayOfNumbers(String[][] s,
 			int columnNumber) {
@@ -385,27 +399,10 @@ public class SpringDBQuery {
 			for (int i = 0; i < seqs.length; i++) {
 				System.out.println(seqs[i]);
 			}
-			System.out.println("\n\nTest getting a single gene from PA14");
-			System.out.println(dB.getSequencesOfGene("wspF", 11));
-
-			//
-			String[] genes = new String[2];
-			genes[0] = "wspF";
-			genes[1] = "wspE";
-
-			int[] genes2 = new int[2];
-			genes2[0] = 3649;
-			genes2[1] = 3650;
-			String[][] seqMatrix = dB.getSequencesOfGenesFromId(genes2);
-			for (int i = 0; i < seqMatrix.length; i++) {
-				for (int j = 0; j < seqMatrix[i].length; j++) {
-					System.out.println(seqMatrix[i][j]);
-				}
-				System.out.println("\n\n");
-			}
-
-			// Testing function getIdOfGenes(String[] genes)
-			System.out.println(dB.getIdOfGenes(genes));
+			
+			
+			dB.executeSql("CREATE TABLE genomic_features(orth_id integer, feature text)");
+			
 
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
